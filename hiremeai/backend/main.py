@@ -9,6 +9,8 @@ from pypdf import PdfReader
 
 load_dotenv()
 
+
+
 my_api_key = os.getenv("GROQ_API_KEY")
 
 if not my_api_key: 
@@ -20,13 +22,46 @@ model = "openai/gpt-oss-20b"
 
 app = FastAPI()
 
+class ChatRequest(BaseModel):
+    question: str | None = None
+
+class Experience(BaseModel):
+    company: str | None = None
+    role: str | None = None
+    duration: str | None = None
+    description: str | None = None
+    skills_used: list[str] = []
+
+class Resume(BaseModel):
+    name: str | None = None 
+    email: str | None = None
+    phone: str | None = None 
+    total_experience_years: float | None = None  
+    skills: list[str] = []
+    experience: list[Experience] = []
+    education: list[str] = []
+    projects: list[str] = []
+    certifications: list[str] = []
+
 @app.get("/")
 def home():
-    resume_text = read_pdf(Path("Pradeep_AM.pdf"))
-
+    # resume_text = read_pdf(Path("Pradeep_AM.pdf"))
+    # resume = parse_resume(resume_text)
+    # print(resume)
+    # return resume.model_validata_json(response_text)
     return {
         "message" : "HireMeAI is running",
-        "Resume Content": resume_text
+    }
+
+
+@app.post("/chat")
+def chat(request: ChatRequest):
+    resume_text = read_pdf(Path("Pradeep_AM.pdf"))
+    resume_data = parse_resume(resume_text)
+    resume = Resume.model_validate(resume_data)
+    answer = ask_candidate(request.question, resume)
+    return {
+        "answer" : answer
     }
 
 # Pdf Extraction
@@ -41,6 +76,52 @@ def read_pdf(file_path : Path):
     return text
 
 
+
+
+resume_schema = Resume.model_json_schema()
+
+
+def ask_candidate(question: str, resume: Resume):
+    system_prompt = f"""
+    You are an AI assistant representing a job candidate. 
+
+    Below is everything you know about the candidate. 
+
+    {resume.model_dump_json(indent=2)}
+
+    Rules:
+
+    1. Answer only using this information.
+
+    2. Never hallucinate.
+
+    3. If information is unavailable, 
+    say
+    
+    "I don't have enough information to answer that."
+
+    4. Be Professional.
+
+    5. Answer as if HR is interviewing this candidate.
+    """
+    
+    response = client.chat.completions.create(
+
+        model = model, 
+        messages = [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": question
+            }
+        ]
+    )
+    return response.choices[0].message.content 
+
+# Parsing the Resume Text 
 
 def parse_resume(resume_text):
     system_prompt = """
